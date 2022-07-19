@@ -82,13 +82,32 @@ fn main() {
                 "Successfully connected as a midi device, forwarding audio input to {}",
                 midi.name()
             );
+            let mut currently_playing_note: Option<Note> = None;
             loop {
                 let note = note_rx.recv().unwrap();
-                midi.send(note.freq, note.amp, midi::NoteEvent::NoteOn);
+
+                let next_note:Note = match &currently_playing_note {
+                    Some(current_note) => {
+                        // It means that we are still holding the same note -> do nothing
+                        if current_note.freq == note.freq && current_note.amp > note.amp {
+                            continue;
+                        }
+
+                        midi.send(current_note.freq, current_note.amp, midi::NoteEvent::NoteOff);
+                        midi.send(note.freq, note.amp, midi::NoteEvent::NoteOn);
+                        note
+                    }
+                    None => {
+                        midi.send(note.freq, note.amp, midi::NoteEvent::NoteOn);
+                        note
+                    }
+                };
+
+                currently_playing_note = Some(next_note);
             }
         }
         Err(e) => {
-            println!("Failed to open midi output: {}", e);
+            eprintln!("Failed to open midi output: {}", e);
             std::process::exit(1);
         }
     }
