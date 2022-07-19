@@ -1,6 +1,7 @@
 use ringbuf::RingBuffer;
 use std::sync::mpsc;
 use std::thread;
+use midi::Note;
 
 mod audio;
 mod fft;
@@ -17,18 +18,6 @@ impl Props {
             buffer_size: 8_192,
             threshold: 20.0,
         }
-    }
-}
-
-#[derive(Debug)]
-struct Note {
-    freq: f32,
-    amp: f32,
-}
-
-impl Note {
-    fn new(freq: f32, amp: f32) -> Self {
-        Self { freq, amp }
     }
 }
 
@@ -63,13 +52,11 @@ fn main() {
                 let fft = fft::calculate_fft(&sample);
                 let maxima = fft::find_maxima(&fft, props.threshold);
 
-                if maxima.1 > 0 {
-                    let note = Note::new(
-                        fft::recalculate_to_freq(maxima.1, props.buffer_size, 44_100.0),
-                        maxima.0,
-                    );
-                    note_tx.send(note).unwrap();
-                }
+                let note = Note::new(
+                    fft::recalculate_to_freq(maxima.1, props.buffer_size, 44_100.0),
+                    maxima.0,
+                );
+                note_tx.send(note).unwrap();
             }
         }
     });
@@ -79,26 +66,34 @@ fn main() {
     match midi_output {
         Ok(mut midi) => {
             println!(
-                "Successfully connected as a midi device, forwarding audio input to {}",
+                "🚀 Successfully connected as a midi device, forwarding audio input to {}",
                 midi.name()
             );
             let mut currently_playing_note: Option<Note> = None;
             loop {
                 let note = note_rx.recv().unwrap();
 
-                let next_note:Note = match &currently_playing_note {
+                // Dead note received, stop playing current note
+                if note.is_dead() && currently_playing_note.is_some() {
+                    let current_note = currently_playing_note.unwrap();
+                    midi.note_off(&current_note);
+                    currently_playing_note = None;
+                    continue;
+                }
+
+                let next_note: Note = match &currently_playing_note {
                     Some(current_note) => {
                         // It means that we are still holding the same note -> do nothing
-                        if current_note.freq == note.freq && current_note.amp > note.amp {
+                        if current_note.is_same(&note) {
                             continue;
                         }
 
-                        midi.send(current_note.freq, current_note.amp, midi::NoteEvent::NoteOff);
-                        midi.send(note.freq, note.amp, midi::NoteEvent::NoteOn);
+                        midi.note_off(current_note);
+                        midi.note_on(&note);
                         note
                     }
                     None => {
-                        midi.send(note.freq, note.amp, midi::NoteEvent::NoteOn);
+                        midi.note_on(&note);
                         note
                     }
                 };

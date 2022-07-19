@@ -1,5 +1,25 @@
 use midir::{MidiOutput, MidiOutputConnection};
 
+#[derive(Debug)]
+pub struct Note {
+    freq: f32,
+    amp: f32,
+}
+
+impl Note {
+    pub fn new(freq: f32, amp: f32) -> Self {
+        Self { freq, amp }
+    }
+
+    pub fn is_dead(&self) -> bool {
+        self.amp < 0.01
+    }
+
+    pub fn is_same(&self, other: &Note) -> bool {
+        self.freq == other.freq && self.amp >= other.amp
+    }
+}
+
 pub struct Midi {
     name: String,
     connection: MidiOutputConnection,
@@ -32,10 +52,18 @@ impl Midi {
         &self.name
     }
 
-    pub fn send(&mut self, freq: f32, _amp: f32, event: NoteEvent) {
+    pub fn note_on(&mut self, note: &Note) {
+        self.send(note, NoteEvent::NoteOn)
+    }
+
+    pub fn note_off(&mut self, note: &Note) {
+        self.send(note, NoteEvent::NoteOff)
+    }
+
+    pub fn send(&mut self, note: &Note, event: NoteEvent) {
         const VELOCITY: u8 = 0x64;
 
-        let note = freq_to_midi_note(freq);
+        let note = freq_to_midi_note(note.freq);
         self.connection.send(&[event.value(), note, VELOCITY]).unwrap();
     }
 }

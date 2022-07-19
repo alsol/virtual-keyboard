@@ -15,8 +15,6 @@ pub fn init(sender: Sender<f32>) {
         .expect("Failed to get default input config")
         .into();
 
-    println!("Input device config: {:?}", config);
-
     let input_data_fn = move |data: &[f32], _: &cpal::InputCallbackInfo| {
         for &sample in data {
             sender.send(sample * 5.0).unwrap();
