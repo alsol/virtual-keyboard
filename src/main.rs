@@ -4,6 +4,7 @@ use ringbuf::RingBuffer;
 
 mod audio;
 mod fft;
+mod midi;
 
 struct Props {
   buffer_size: usize,
@@ -37,7 +38,7 @@ impl Note {
 fn main() {
     let props = Props::new();
 
-    let (tx, rx) = mpsc::channel();
+    let (sample_tx, sample_rx) = mpsc::channel();
     let (note_tx, note_rx) = mpsc::channel();
 
     let ring_buffer = RingBuffer::<f32>::new(props.buffer_size);
@@ -45,13 +46,13 @@ fn main() {
     let (mut prod,  mut cons) = ring_buffer.split();
 
     thread::spawn(move || {
-        audio::init(tx);
+        audio::init(sample_tx);
     });
 
     thread::spawn(move || {
         println!("Started thread");
         loop {
-          let sample = rx.recv().unwrap();
+          let sample = sample_rx.recv().unwrap();
           if !prod.is_full() {
             prod.push(sample).unwrap();
           }
@@ -78,11 +79,19 @@ fn main() {
 
       thread::spawn(move || {
         println!("Started thread");
-        loop {
-          match note_rx.recv() {
-            Ok(note) =>  println!("Note: {:?}", note),
-            Err(_) => {},
-          }
+        let midi_output = midi::open_midi_output();
+
+        match midi_output {
+            Ok(mut midi) => {
+                println!("Successfully connected as a midi device, forwarding audio input to {}", midi.name());
+                loop {
+                    let note = note_rx.recv().unwrap();
+                    midi.send(note.freq, note.amp);
+                }
+            },
+            Err(e) => {
+              println!("Failed to open midi output: {}", e);
+            }
         }
       });
 
