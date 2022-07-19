@@ -15,7 +15,7 @@ struct Props {
 impl Props {
     fn new() -> Self {
         Self {
-            buffer_size: 8_192,
+            buffer_size: 4_096,
             threshold: 250.0,
         }
     }
