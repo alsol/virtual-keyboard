@@ -1,0 +1,15 @@
+[package]
+name = "virtual-keyboard"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# midir = "0.7.0"
+ferris-says = "0.2"
+cpal = "0.13.5"
+clap = "3.2.6"
+anyhow = "1.0"
+rustfft = "6.0.1"
+ringbuf = "0.2.8"
