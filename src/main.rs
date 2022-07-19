@@ -16,7 +16,7 @@ impl Props {
     fn new() -> Self {
         Self {
             buffer_size: 8_192,
-            threshold: 20.0,
+            threshold: 250.0,
         }
     }
 }
@@ -78,6 +78,8 @@ fn main() {
                     let current_note = currently_playing_note.unwrap();
                     midi.note_off(&current_note);
                     currently_playing_note = None;
+                    continue;
+                } else if note.is_dead() {
                     continue;
                 }
 
