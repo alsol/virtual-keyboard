@@ -5,6 +5,20 @@ pub struct Midi {
     connection: MidiOutputConnection,
 }
 
+pub enum NoteEvent {
+    NoteOn,
+    NoteOff,
+}
+
+impl NoteEvent {
+    fn value(&self) -> u8 {
+        match *self {
+            NoteEvent::NoteOn => 0x90,
+            NoteEvent::NoteOff => 0x80,
+        }
+    }
+}
+
 impl Midi {
 
     fn new(name: String, connection: MidiOutputConnection) -> Self {
@@ -18,18 +32,17 @@ impl Midi {
         &self.name
     }
 
-    pub fn send(&mut self, freq: f32, amp: f32) {
-        const NOTE_ON_MSG: u8 = 0x90;
-        const NOTE_OFF_MSG: u8 = 0x80;
+    pub fn send(&mut self, freq: f32, _amp: f32, event: NoteEvent) {
         const VELOCITY: u8 = 0x64;
 
         let note = freq_to_midi_note(freq);
-        self.connection.send(&[NOTE_ON_MSG, note, VELOCITY]).unwrap();
+        self.connection.send(&[event.value(), note, VELOCITY]).unwrap();
     }
 }
 
 pub fn open_midi_output() -> Result<Midi, String> {
-    let midi_out = MidiOutput::new("virtual-keyboard midi").unwrap();
+    let client_name = "virtual-keyboard midi";
+    let midi_out = MidiOutput::new(client_name).unwrap();
 
     let out_ports = midi_out.ports();
     if out_ports.len() == 0 {
@@ -37,8 +50,9 @@ pub fn open_midi_output() -> Result<Midi, String> {
     }
 
     let midi_port = midi_out.ports().into_iter().next().unwrap();
+    
     match midi_out.connect(&midi_port,  "midi-output") {
-        Ok(connection) => Ok(Midi::new("virtual-keyboard midi".to_string(), connection)),
+        Ok(connection) => Ok(Midi::new(client_name.to_string(), connection)),
         Err(err) => Err(format!("Failed to connect to output port: {}", err)),
     }
 }
