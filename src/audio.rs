@@ -1,6 +1,6 @@
 extern crate cpal;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{traits::{DeviceTrait, HostTrait}, Stream, StreamConfig};
 use std::sync::mpsc::Sender;
 
 pub struct AudioConfig {
@@ -8,7 +8,26 @@ pub struct AudioConfig {
     pub input_channel: usize
 }
 
-pub fn init(sender: Sender<f32>, config: &AudioConfig) {
+pub struct AudioDeviceMeta {
+    pub name: String
+}
+
+pub struct AudioDevice {
+    pub input_stream: Stream,
+    pub buffer_size: usize
+}
+
+pub fn list() -> Vec<AudioDeviceMeta> {
+    let host = cpal::default_host();
+
+    host.input_devices().unwrap()
+        .map(|d| AudioDeviceMeta {
+            name: d.name().unwrap()
+        })
+        .collect()
+}
+
+pub fn init(sender: Sender<f32>, config: &AudioConfig) -> AudioDevice {
     let host = cpal::default_host();
     
     let input_device = if config.input_device == "default" {
@@ -24,10 +43,20 @@ pub fn init(sender: Sender<f32>, config: &AudioConfig) {
     let input_config = input_device.supported_input_configs().unwrap().enumerate()
         .find(|(index, _)| index == &(config.input_channel - 1))
         .map(|(_, c)| c.with_max_sample_rate())
-        .expect("Failed to get input config")
-        .into();
+        .expect("Failed to get input config");
 
-    println!("🔨 Selected config: {:?}", input_config);
+    let buffer_size: u32 = match input_config.buffer_size() {
+        cpal::SupportedBufferSize::Range { min: _, max } => *max,
+        cpal::SupportedBufferSize::Unknown => panic!("💀 Unable to calculate buffer size for selected device"),
+    };
+
+    let stream_config = StreamConfig {
+        channels: input_config.channels(),
+        sample_rate: input_config.sample_rate(),
+        buffer_size: cpal::BufferSize::Fixed(buffer_size)
+    };
+
+    println!("🔨 Selected config: {:?}", stream_config);
 
     let input_data_fn = move |data: &[f32], _: &cpal::InputCallbackInfo| {
         for &sample in data {
@@ -36,15 +65,14 @@ pub fn init(sender: Sender<f32>, config: &AudioConfig) {
     };
     
     let input_stream = input_device.build_input_stream(
-        &input_config,
+        &stream_config,
         input_data_fn,
         err_fn
     ).expect("Failed to build input stream");
 
-    input_stream.play().expect("Failed to open input stream");
-
-    loop {
-
+    AudioDevice {
+        input_stream,
+        buffer_size: buffer_size as usize
     }
 }
 

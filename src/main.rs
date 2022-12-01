@@ -1,3 +1,4 @@
+use cpal::traits::StreamTrait;
 use ringbuf::RingBuffer;
 use std::sync::mpsc;
 use std::thread;
@@ -10,9 +11,9 @@ mod midi;
 
 struct Props {
     audio_config: audio::AudioConfig,
-    buffer_size: usize,
     threshold: f32,
-    debug: bool
+    debug: bool,
+    list: bool
 }
 
 impl Props {
@@ -21,16 +22,18 @@ impl Props {
             .arg(arg!([IN] "The input device to use [default: default]"))
             .arg(arg!(-c --channel [CHANNEL] "The input channel for input device [default: 1]"))
             .arg(arg!(-t --threshold [THRESHOLD] "Specify the threshold for input signal [default: 250]"))
-            .arg(arg!(-d --debug "Produce execution debug output [default: false]"));
+            .arg(arg!(-d --debug "Produce execution debug output [default: false]"))
+            .arg(arg!(-l --list "List supported audio devices"));
 
         let matches = app.get_matches();
 
-        let input_device = matches.value_of("IN").unwrap_or("Scarlett Solo USB").to_string();
+        let input_device = matches.value_of("IN").unwrap_or("default").to_string();
         let input_channel: usize = matches
             .value_of("channel")
             .unwrap_or("2")
             .parse()
             .unwrap();
+
         let threshold: f32 = matches
             .value_of("threshold")
             .unwrap_or("250")
@@ -38,16 +41,16 @@ impl Props {
             .unwrap();
 
         let debug: bool = matches.is_present("debug");
-        let buffer_size = 8_192;
+        let list: bool = matches.is_present("list");
 
         Self { 
             audio_config: audio::AudioConfig {
                 input_device,
                 input_channel
             },
-             buffer_size,
              threshold, 
-             debug 
+             debug,
+             list
         }
     }
 }
@@ -55,16 +58,28 @@ impl Props {
 fn main() {
     let props = Props::from_args();
 
+    if props.list {
+        let devices = audio::list();
+        println!("Supported devices:");
+
+        for device in devices {
+            println!("🔊 {}", device.name)
+        }
+
+        return;
+    }
+
     let (sample_tx, sample_rx) = mpsc::channel();
     let (note_tx, note_rx) = mpsc::channel();
 
-    let ring_buffer = RingBuffer::<f32>::new(props.buffer_size);
+    let audio_device =  audio::init(sample_tx, &props.audio_config);
 
+    audio_device.input_stream.play().expect("Failed to open input stream");
+
+    let buffer_size = audio_device.buffer_size;
+
+    let ring_buffer = RingBuffer::<f32>::new(buffer_size);
     let (mut prod, mut cons) = ring_buffer.split();
-
-    thread::spawn(move || {
-        audio::init(sample_tx, &props.audio_config);
-    });
 
     thread::spawn(move || loop {
         let sample = sample_rx.recv().unwrap();
@@ -75,7 +90,7 @@ fn main() {
     });
 
     thread::spawn(move || {
-        let mut sample: Vec<f32> = vec![0.0; props.buffer_size];
+        let mut sample: Vec<f32> = vec![0.0; buffer_size];
 
         loop {
             if cons.is_full() {
@@ -84,7 +99,7 @@ fn main() {
                 let maxima = fft::find_maxima(&fft, props.threshold);
 
                 let note = Note::new(
-                    fft::recalculate_to_freq(maxima.1, props.buffer_size, 48_000.0),
+                    fft::recalculate_to_freq(maxima.1, buffer_size, 48_000.0),
                     maxima.0,
                 );
 
