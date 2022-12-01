@@ -63,7 +63,12 @@ fn main() {
         println!("Supported devices:");
 
         for device in devices {
-            println!("🔊 {}", device.name)
+            let postfix = match device.default {
+                true => "[default]",
+                _ => ""
+            };
+
+            println!("🔊 {} {}", device.name, postfix)
         }
 
         return;

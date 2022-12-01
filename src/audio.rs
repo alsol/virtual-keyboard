@@ -9,7 +9,8 @@ pub struct AudioConfig {
 }
 
 pub struct AudioDeviceMeta {
-    pub name: String
+    pub name: String,
+    pub default: bool
 }
 
 pub struct AudioDevice {
@@ -20,9 +21,14 @@ pub struct AudioDevice {
 pub fn list() -> Vec<AudioDeviceMeta> {
     let host = cpal::default_host();
 
+    let default_device_name = &host.default_input_device()
+        .map(|d| d.name().unwrap())
+        .unwrap();
+
     host.input_devices().unwrap()
         .map(|d| AudioDeviceMeta {
-            name: d.name().unwrap()
+            name: d.name().unwrap(),
+            default: d.name().map(|name| name.eq(default_device_name)).unwrap_or(false)
         })
         .collect()
 }
